@@ -70,7 +70,7 @@ function getCharacterAvatar(context, message) {
     if (!character?.avatar) return undefined;
 
     return new URL(
-        `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`,
+        `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}&width=512&height=512`,
         location.origin,
     ).href;
 }
@@ -239,7 +239,7 @@ async function showTestNotification() {
     const character = context.characters?.[context.characterId];
     const testAvatar = character?.avatar
         ? new URL(
-            `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`,
+            `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}&width=512&height=512`,
             location.origin,
         ).href
         : undefined;
