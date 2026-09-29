@@ -8,7 +8,8 @@ const DEFAULT_SETTINGS = {
 };
 
 let notificationRegistration = null;
-let settingsUiLoaded = false;\nlet settingsObserver = null;
+let settingsUiLoaded = false;
+let settingsObserver = null;
 let eventsBound = false;
 
 let generationState = null;
