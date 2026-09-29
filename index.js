@@ -380,6 +380,8 @@ async function showTestNotification() {
 }
 
 async function loadSettingsUI() {
+    if (settingsUiLoaded) return true;
+
     const target = $('#extensions_settings2').length
         ? $('#extensions_settings2')
         : $('#extensions_settings').length
@@ -392,7 +394,6 @@ async function loadSettingsUI() {
         const context = SillyTavern.getContext();
         let html = '';
 
-        // 优先使用 ST 官方模板 API。
         if (context.renderExtensionTemplateAsync) {
             html = await context.renderExtensionTemplateAsync(
                 'third-party/st-qq-notification',
@@ -400,25 +401,19 @@ async function loadSettingsUI() {
             );
         }
 
-        // 某些旧版/兼容版 ST 的 context 没有这个 API，直接读取本扩展自己的模板。
         if (!html) {
-            html = await $.get(
-                'scripts/extensions/third-party/st-qq-notification/settings.html',
-            );
+            html = await $.get('scripts/extensions/third-party/st-qq-notification/settings.html');
         }
 
         if (!html) return false;
 
-        // 只有真正挂进目标容器后才标记成功。
+        // 防止重复注入。
         target.find('#st_qq_notification_settings').remove();
         target.append(html);
 
-        const root = target.find('#st_qq_notification_settings');
-        if (!root.length) return false;
-
         const settings = getSettings();
 
-        root.find('#stq_enabled')
+        $('#stq_enabled')
             .prop('checked', settings.enabled)
             .off('change.stq')
             .on('change.stq', function () {
@@ -426,7 +421,7 @@ async function loadSettingsUI() {
                 saveSettings();
             });
 
-        root.find('#stq_background_only')
+        $('#stq_background_only')
             .prop('checked', settings.backgroundOnly)
             .off('change.stq')
             .on('change.stq', function () {
@@ -434,7 +429,7 @@ async function loadSettingsUI() {
                 saveSettings();
             });
 
-        root.find('#stq_vibrate')
+        $('#stq_vibrate')
             .prop('checked', settings.vibrate)
             .off('change.stq')
             .on('change.stq', function () {
@@ -442,7 +437,7 @@ async function loadSettingsUI() {
                 saveSettings();
             });
 
-        root.find('#stq_length')
+        $('#stq_length')
             .val(settings.previewLength)
             .off('change.stq')
             .on('change.stq', function () {
@@ -455,11 +450,11 @@ async function loadSettingsUI() {
                 saveSettings();
             });
 
-        root.find('#stq_permission')
+        $('#stq_permission')
             .off('click.stq')
             .on('click.stq', requestPermission);
 
-        root.find('#stq_test')
+        $('#stq_test')
             .off('click.stq')
             .on('click.stq', showTestNotification);
 
@@ -468,42 +463,7 @@ async function loadSettingsUI() {
         return true;
     } catch (error) {
         console.error('[ST QQ Notification] Failed to load settings:', error);
-        settingsUiLoaded = false;
         return false;
-    }
-}
-
-function scheduleSettingsMount(eventSource, eventTypes) {
-    const tryMount = () => {
-        void loadSettingsUI();
-    };
-
-    tryMount();
-
-    if (eventTypes.APP_INITIALIZED) {
-        eventSource.on(eventTypes.APP_INITIALIZED, tryMount);
-    }
-
-    if (eventTypes.APP_READY) {
-        eventSource.on(eventTypes.APP_READY, tryMount);
-    }
-
-    // 兼容设置面板晚于扩展初始化才生成的 ST 版本。
-    for (const delay of [300, 800, 1500, 2500, 4000, 6000, 10000]) {
-        setTimeout(tryMount, delay);
-    }
-
-    if (!settingsObserver && document.body) {
-        settingsObserver = new MutationObserver(() => {
-            if (!document.querySelector('#st_qq_notification_settings')) {
-                tryMount();
-            }
-        });
-
-        settingsObserver.observe(document.body, {
-            childList: true,
-            subtree: true,
-        });
     }
 }
 
@@ -514,7 +474,12 @@ async function init() {
     } = SillyTavern.getContext();
 
     getSettings();
-    scheduleSettingsMount(eventSource, event_types);
+
+    // 某些 ST 版本执行 activate hook 时设置面板 DOM 尚未完成，
+    // 因此先尝试一次；如果还没有目标容器，再在 APP_READY 后补一次。
+    if (!(await loadSettingsUI()) && event_types.APP_READY) {
+        eventSource.once(event_types.APP_READY, loadSettingsUI);
+    }
 
     if (Notification.permission === 'granted') {
         try {
@@ -526,19 +491,6 @@ async function init() {
 
     if (!eventsBound) {
         eventSource.on(event_types.MESSAGE_RECEIVED, showNotification);
-
-        if (event_types.GENERATION_STARTED) {
-            eventSource.on(event_types.GENERATION_STARTED, handleGenerationStarted);
-        }
-
-        if (event_types.GENERATION_ENDED) {
-            eventSource.on(event_types.GENERATION_ENDED, handleGenerationFinished);
-        }
-
-        if (event_types.GENERATION_STOPPED) {
-            eventSource.on(event_types.GENERATION_STOPPED, handleGenerationFinished);
-        }
-
         eventsBound = true;
     }
 
