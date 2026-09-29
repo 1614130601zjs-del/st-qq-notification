@@ -178,16 +178,11 @@ async function showNotification(messageId) {
 
     const title = message.name || context.characters?.[context.characterId]?.name || 'SillyTavern';
     const body = getPreview(message.mes, settings.previewLength);
-    const avatar = getCharacterAvatar(context, message);
     const tag = `${EXT_KEY}-${context.characterId ?? 'chat'}`;
 
     try {
         await registration.showNotification(title, {
             body,
-            // Android 会把 Web Notification 的应用身份图标交给浏览器处理。
-            // 不再使用 image，避免角色头像被缩在通知右侧。
-            icon: avatar,
-            badge: avatar,
             tag,
             renotify: true,
             requireInteraction: true,
@@ -224,20 +219,11 @@ async function showTestNotification() {
     const settings = getSettings();
     const context = SillyTavern.getContext();
     const character = context.characters?.[context.characterId];
-    const testAvatar = character?.avatar
-        ? new URL(
-            `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`,
-            location.origin,
-        ).href
-        : undefined;
     const testTitle = character?.name || 'SillyTavern';
 
     try {
         await registration.showNotification(testTitle, {
             body: 'QQ式回复通知测试：系统通知、常驻和震动功能已发送。',
-            // 不使用 image，避免头像缩在通知右侧。
-            icon: testAvatar,
-            badge: testAvatar,
             tag: `${EXT_KEY}-test`,
             requireInteraction: true,
             renotify: true,
