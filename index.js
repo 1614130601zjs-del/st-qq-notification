@@ -7,16 +7,22 @@ const DEFAULT_SETTINGS = {
     previewLength: 50,
 };
 
+let notificationRegistration = null;
+
 function getSettings() {
     const { extensionSettings, saveSettingsDebounced } = SillyTavern.getContext();
+
     if (!extensionSettings[EXT_KEY]) {
         extensionSettings[EXT_KEY] = structuredClone(DEFAULT_SETTINGS);
         saveSettingsDebounced();
     }
+
     const settings = extensionSettings[EXT_KEY];
+
     for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
         if (!(key in settings)) settings[key] = value;
     }
+
     return settings;
 }
 
@@ -29,6 +35,7 @@ function getPreview(text, maxLength) {
         .replace(/<[^>]*>/g, '')
         .replace(/\s+/g, ' ')
         .trim();
+
     if (!clean) return '';
     return clean.length > maxLength ? clean.slice(0, maxLength) + '…' : clean;
 }
@@ -47,67 +54,99 @@ function getCharacterAvatar(context, message) {
     ).href;
 }
 
-function updateStatus() {
+function updateStatus(message, type = '') {
     const el = $('#stq_status');
     if (!el.length) return;
 
+    if (message) {
+        el.text(message);
+        el.removeClass('ok warn err');
+        if (type) el.addClass(type);
+        return;
+    }
+
     if (!('Notification' in window)) {
-        el.text('当前浏览器不支持系统通知。');
+        el.text('当前浏览器不支持 Web Notification。');
         el.removeClass('ok warn').addClass('err');
         return;
     }
 
     const permission = Notification.permission;
+
     if (permission === 'granted') {
-        el.text('通知权限：已允许');
+        el.text(notificationRegistration
+            ? '通知权限：已允许 · Android 通知通道已准备'
+            : '通知权限：已允许 · 正在准备通知服务');
         el.removeClass('warn err').addClass('ok');
     } else if (permission === 'denied') {
         el.text('通知权限：已拒绝，请在浏览器/Android 设置中允许。');
         el.removeClass('ok warn').addClass('err');
     } else {
-        el.text('通知权限：尚未允许');
+        el.text('通知权限：尚未允许，请点击“请求通知权限”。');
         el.removeClass('ok err').addClass('warn');
     }
+}
+
+async function registerNotificationWorker() {
+    if (!('serviceWorker' in navigator)) {
+        throw new Error('当前浏览器不支持 Service Worker');
+    }
+
+    if (!window.isSecureContext) {
+        throw new Error('系统通知需要 HTTPS 或 localhost');
+    }
+
+    const swUrl = new URL('sw.js', import.meta.url);
+    notificationRegistration = await navigator.serviceWorker.register(swUrl, {
+        scope: './',
+    });
+
+    await navigator.serviceWorker.ready;
+    updateStatus();
+    return notificationRegistration;
 }
 
 async function requestPermission() {
     if (!('Notification' in window)) {
         updateStatus();
-        return;
+        return false;
     }
 
     try {
-        await Notification.requestPermission();
+        const permission = await Notification.requestPermission();
+
+        if (permission === 'granted') {
+            await registerNotificationWorker();
+            updateStatus();
+            return true;
+        }
+
+        updateStatus();
+        return false;
     } catch (error) {
-        console.warn('[ST QQ Notification] Permission request failed:', error);
+        console.error('[ST QQ Notification] Permission/worker setup failed:', error);
+        updateStatus(`通知初始化失败：${error.message || error}`, 'err');
+        return false;
     }
-    updateStatus();
 }
 
-function makeNotificationOptions(context, message, settings) {
-    const body = getPreview(message.mes, settings.previewLength);
-    const avatar = getCharacterAvatar(context, message);
+async function getNotificationRegistration() {
+    if (notificationRegistration) return notificationRegistration;
 
-    const options = {
-        body,
-        icon: avatar,
-        tag: `${EXT_KEY}-${context.characterId ?? 'chat'}`,
-        renotify: true,
-        requireInteraction: true,
-        data: {
-            chatId: context.characterId ?? null,
-        },
-    };
+    if (!('serviceWorker' in navigator)) return null;
 
-    if (settings.vibrate) {
-        options.vibrate = [180, 90, 180];
+    try {
+        notificationRegistration = await navigator.serviceWorker.ready;
+        return notificationRegistration;
+    } catch (error) {
+        console.warn('[ST QQ Notification] Service Worker unavailable:', error);
+        return null;
     }
-
-    return options;
 }
 
-function showNotification(messageId) {
+async function showNotification(messageId) {
     const settings = getSettings();
+
     if (!settings.enabled) return;
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     if (settings.backgroundOnly && document.hasFocus()) return;
@@ -117,40 +156,73 @@ function showNotification(messageId) {
 
     if (!message || message.is_user || !message.mes || message.mes === '...') return;
 
+    const registration = await getNotificationRegistration();
+
+    if (!registration) {
+        updateStatus('通知服务未准备好，请先点击“请求通知权限”。', 'warn');
+        return;
+    }
+
     const title = message.name || context.characters?.[context.characterId]?.name || 'SillyTavern';
-    const notification = new Notification(title, makeNotificationOptions(context, message, settings));
+    const body = getPreview(message.mes, settings.previewLength);
+    const avatar = getCharacterAvatar(context, message);
+    const tag = `${EXT_KEY}-${context.characterId ?? 'chat'}`;
 
-    notification.onclick = () => {
-        window.focus();
-        notification.close();
-    };
-
-    notification.onerror = (event) => {
-        console.warn('[ST QQ Notification] Notification error:', event);
-    };
+    try {
+        await registration.showNotification(title, {
+            body,
+            icon: avatar,
+            tag,
+            renotify: true,
+            requireInteraction: true,
+            vibrate: settings.vibrate ? [180, 90, 180] : undefined,
+            data: {
+                url: location.href,
+                chatId: context.characterId ?? null,
+            },
+        });
+    } catch (error) {
+        console.error('[ST QQ Notification] showNotification failed:', error);
+        updateStatus(`发送通知失败：${error.message || error}`, 'err');
+    }
 }
 
-function showTestNotification() {
-    if (!('Notification' in window)) return;
+async function showTestNotification() {
+    if (!('Notification' in window)) {
+        updateStatus('当前浏览器不支持系统通知。', 'err');
+        return;
+    }
+
     if (Notification.permission !== 'granted') {
-        requestPermission();
+        const granted = await requestPermission();
+        if (!granted) return;
+    }
+
+    const registration = await getNotificationRegistration();
+
+    if (!registration) {
+        updateStatus('通知服务未准备好。', 'err');
         return;
     }
 
     const settings = getSettings();
-    const notification = new Notification('SillyTavern', {
-        body: 'QQ式回复通知测试：通知、头像、常驻和震动功能已发送。',
-        icon: location.origin + '/favicon.ico',
-        tag: `${EXT_KEY}-test`,
-        requireInteraction: true,
-        renotify: true,
-        ...(settings.vibrate ? { vibrate: [180, 90, 180] } : {}),
-    });
 
-    notification.onclick = () => {
-        window.focus();
-        notification.close();
-    };
+    try {
+        await registration.showNotification('SillyTavern', {
+            body: 'QQ式回复通知测试：系统通知、常驻和震动功能已发送。',
+            icon: location.origin + '/favicon.ico',
+            tag: `${EXT_KEY}-test`,
+            requireInteraction: true,
+            renotify: true,
+            vibrate: settings.vibrate ? [180, 90, 180] : undefined,
+            data: {
+                url: location.href,
+            },
+        });
+    } catch (error) {
+        console.error('[ST QQ Notification] Test notification failed:', error);
+        updateStatus(`测试通知失败：${error.message || error}`, 'err');
+    }
 }
 
 async function init() {
@@ -193,7 +265,17 @@ async function init() {
 
         $('#stq_permission').on('click', requestPermission);
         $('#stq_test').on('click', showTestNotification);
+
         updateStatus();
+
+        if (Notification.permission === 'granted') {
+            try {
+                await registerNotificationWorker();
+            } catch (error) {
+                console.warn('[ST QQ Notification] Existing permission but worker setup failed:', error);
+                updateStatus('通知权限已有，但通知服务尚未准备好，请重新点击“请求通知权限”。', 'warn');
+            }
+        }
     } catch (error) {
         console.error('[ST QQ Notification] Failed to load settings:', error);
     }
