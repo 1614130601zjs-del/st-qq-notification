@@ -187,6 +187,8 @@ async function showNotification(messageId) {
         await registration.showNotification(title, {
             body,
             icon: avatar,
+            badge: avatar,
+            image: avatar,
             tag,
             renotify: true,
             requireInteraction: true,
@@ -235,6 +237,8 @@ async function showTestNotification() {
         await registration.showNotification(testTitle, {
             body: 'QQ式回复通知测试：系统通知、常驻和震动功能已发送。',
             icon: testAvatar,
+            badge: testAvatar,
+            image: testAvatar,
             tag: `${EXT_KEY}-test`,
             requireInteraction: true,
             renotify: true,
