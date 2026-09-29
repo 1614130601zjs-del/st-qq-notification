@@ -97,8 +97,9 @@ async function registerNotificationWorker() {
     }
 
     const swUrl = new URL('sw.js', import.meta.url);
+    const workerScope = new URL('./', swUrl).href;
     notificationRegistration = await navigator.serviceWorker.register(swUrl, {
-        scope: './',
+        scope: workerScope,
     });
 
     await navigator.serviceWorker.ready;
