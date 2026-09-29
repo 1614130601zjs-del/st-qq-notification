@@ -391,14 +391,27 @@ async function loadSettingsUI() {
     if (!target || !target.length) return false;
 
     try {
-        const context = SillyTavern.getContext();
         let html = '';
 
-        if (context.renderExtensionTemplateAsync) {
-            html = await context.renderExtensionTemplateAsync(
-                'third-party/st-qq-notification',
-                'settings',
-            );
+        // 直接从当前扩展目录读取 settings.html，避免模板渲染器异常时整段 UI 静默失败。
+        try {
+            const response = await fetch(new URL('settings.html', import.meta.url));
+            if (response.ok) {
+                html = await response.text();
+            }
+        } catch (error) {
+            console.warn('[ST QQ Notification] Direct settings.html load failed:', error);
+        }
+
+        // 兼容旧版酒馆/特殊安装方式。
+        if (!html) {
+            const context = SillyTavern.getContext();
+            if (context.renderExtensionTemplateAsync) {
+                html = await context.renderExtensionTemplateAsync(
+                    'third-party/st-qq-notification',
+                    'settings',
+                );
+            }
         }
 
         if (!html) {
@@ -407,7 +420,6 @@ async function loadSettingsUI() {
 
         if (!html) return false;
 
-        // 防止重复注入。
         target.find('#st_qq_notification_settings').remove();
         target.append(html);
 
