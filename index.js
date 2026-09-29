@@ -31,9 +31,15 @@ function saveSettings() {
 }
 
 function getPreview(text, maxLength) {
-    const clean = String(text ?? '')
+    let source = String(text ?? '');
+
+    // 如果消息使用 <content>...</content> 包裹正文，只取其中内容。
+    const contentMatch = source.match(/<content(?:\\s[^>]*)?>([\\s\\S]*?)<\\/content>/i);
+    if (contentMatch) source = contentMatch[1];
+
+    const clean = source
         .replace(/<[^>]*>/g, '')
-        .replace(/\s+/g, ' ')
+        .replace(/\\s+/g, ' ')
         .trim();
 
     if (!clean) return '';
@@ -208,11 +214,20 @@ async function showTestNotification() {
     }
 
     const settings = getSettings();
+    const context = SillyTavern.getContext();
+    const character = context.characters?.[context.characterId];
+    const testAvatar = character?.avatar
+        ? new URL(
+            `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`,
+            location.origin,
+        ).href
+        : undefined;
+    const testTitle = character?.name || 'SillyTavern';
 
     try {
-        await registration.showNotification('SillyTavern', {
+        await registration.showNotification(testTitle, {
             body: 'QQ式回复通知测试：系统通知、常驻和震动功能已发送。',
-            icon: location.origin + '/favicon.ico',
+            icon: testAvatar,
             tag: `${EXT_KEY}-test`,
             requireInteraction: true,
             renotify: true,
