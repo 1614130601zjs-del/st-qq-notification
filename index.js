@@ -62,15 +62,12 @@ function getPreview(text, maxLength) {
     return clean.length > maxLength ? clean.slice(0, maxLength) + '…' : clean;
 }
 function getCharacterAvatar(context, message) {
-    if (message.force_avatar) {
-        return new URL(message.force_avatar, location.origin).href;
-    }
+    const avatar = message.force_avatar || context.characters?.[context.characterId]?.avatar;
+    if (!avatar) return undefined;
 
-    const character = context.characters?.[context.characterId];
-    if (!character?.avatar) return undefined;
-
+    // 请求方形头像缩略图，避免 Android 通知把竖图压扁。
     return new URL(
-        '/thumbnail?type=avatar&file=' + encodeURIComponent(character.avatar),
+        '/thumbnail?type=avatar&file=' + encodeURIComponent(avatar) + '&width=256&height=256',
         location.origin,
     ).href;
 }
