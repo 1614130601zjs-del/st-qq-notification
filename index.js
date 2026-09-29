@@ -379,7 +379,7 @@ async function showTestNotification() {
     }
 }
 
-async function mountSettingsUI() {
+async function loadSettingsUI() {
     const target = $('#extensions_settings2').length
         ? $('#extensions_settings2')
         : $('#extensions_settings').length
@@ -387,76 +387,95 @@ async function mountSettingsUI() {
             : null;
 
     if (!target || !target.length) return false;
-    if (target.find('#st_qq_notification_settings').length) {
-        settingsUiLoaded = true;
-        bindSettingsControls(target.find('#st_qq_notification_settings'));
-        updateStatus();
-        return true;
-    }
-
-    if (settingsMounting) return false;
-    settingsMounting = true;
 
     try {
-        const { renderExtensionTemplateAsync } = SillyTavern.getContext();
-        const settingsHtml = await renderExtensionTemplateAsync(
-            'third-party/st-qq-notification',
-            'settings',
-        );
+        const context = SillyTavern.getContext();
+        let html = '';
 
-        // 酒馆官方推荐的扩展设置挂载方式：把 settings.html 渲染后直接追加到扩展设置面板。
-        target.append(settingsHtml);
-
-        const root = target.find('#st_qq_notification_settings');
-        if (!root.length) {
-            throw new Error('settings.html rendered but settings root was not found');
+        // 优先使用 ST 官方模板 API。
+        if (context.renderExtensionTemplateAsync) {
+            html = await context.renderExtensionTemplateAsync(
+                'third-party/st-qq-notification',
+                'settings',
+            );
         }
 
-        bindSettingsControls(root);
+        // 某些旧版/兼容版 ST 的 context 没有这个 API，直接读取本扩展自己的模板。
+        if (!html) {
+            html = await $.get(
+                'scripts/extensions/third-party/st-qq-notification/settings.html',
+            );
+        }
+
+        if (!html) return false;
+
+        // 只有真正挂进目标容器后才标记成功。
+        target.find('#st_qq_notification_settings').remove();
+        target.append(html);
+
+        const root = target.find('#st_qq_notification_settings');
+        if (!root.length) return false;
+
+        const settings = getSettings();
+
+        root.find('#stq_enabled')
+            .prop('checked', settings.enabled)
+            .off('change.stq')
+            .on('change.stq', function () {
+                settings.enabled = $(this).prop('checked');
+                saveSettings();
+            });
+
+        root.find('#stq_background_only')
+            .prop('checked', settings.backgroundOnly)
+            .off('change.stq')
+            .on('change.stq', function () {
+                settings.backgroundOnly = $(this).prop('checked');
+                saveSettings();
+            });
+
+        root.find('#stq_vibrate')
+            .prop('checked', settings.vibrate)
+            .off('change.stq')
+            .on('change.stq', function () {
+                settings.vibrate = $(this).prop('checked');
+                saveSettings();
+            });
+
+        root.find('#stq_length')
+            .val(settings.previewLength)
+            .off('change.stq')
+            .on('change.stq', function () {
+                const value = Math.max(
+                    10,
+                    Math.min(120, Number.parseInt($(this).val(), 10) || 50),
+                );
+                settings.previewLength = value;
+                $(this).val(value);
+                saveSettings();
+            });
+
+        root.find('#stq_permission')
+            .off('click.stq')
+            .on('click.stq', requestPermission);
+
+        root.find('#stq_test')
+            .off('click.stq')
+            .on('click.stq', showTestNotification);
+
         settingsUiLoaded = true;
         updateStatus();
         return true;
     } catch (error) {
-        console.error('[ST QQ Notification] Failed to render settings template:', error);
+        console.error('[ST QQ Notification] Failed to load settings:', error);
         settingsUiLoaded = false;
         return false;
-    } finally {
-        settingsMounting = false;
     }
-}
-
-function bindSettingsControls(root) {
-    const settings = getSettings();
-
-    root.find('#stq_enabled').prop('checked', settings.enabled).off('change.stq').on('change.stq', function () {
-        settings.enabled = $(this).prop('checked');
-        saveSettings();
-    });
-    root.find('#stq_background_only').prop('checked', settings.backgroundOnly).off('change.stq').on('change.stq', function () {
-        settings.backgroundOnly = $(this).prop('checked');
-        saveSettings();
-    });
-    root.find('#stq_vibrate').prop('checked', settings.vibrate).off('change.stq').on('change.stq', function () {
-        settings.vibrate = $(this).prop('checked');
-        saveSettings();
-    });
-    root.find('#stq_length').val(settings.previewLength).off('change.stq').on('change.stq', function () {
-        const value = Math.max(10, Math.min(120, Number.parseInt($(this).val(), 10) || 50));
-        settings.previewLength = value;
-        $(this).val(value);
-        saveSettings();
-    });
-    root.find('#stq_permission').off('click.stq').on('click.stq', requestPermission);
-    root.find('#stq_test').off('click.stq').on('click.stq', showTestNotification);
-}
-
-async function loadSettingsUI() {
-    return mountSettingsUI();
 }
 
 function scheduleSettingsMount(eventSource, eventTypes) {
     const tryMount = () => {
-        void mountSettingsUI();
+        void loadSettingsUI();
     };
 
     tryMount();
@@ -469,18 +488,22 @@ function scheduleSettingsMount(eventSource, eventTypes) {
         eventSource.on(eventTypes.APP_READY, tryMount);
     }
 
+    // 兼容设置面板晚于扩展初始化才生成的 ST 版本。
     for (const delay of [300, 800, 1500, 2500, 4000, 6000, 10000]) {
         setTimeout(tryMount, delay);
     }
 
-    // 扩展面板可能在之后才被酒馆创建；持续监听 DOM，直到设置真正挂载。
     if (!settingsObserver && document.body) {
         settingsObserver = new MutationObserver(() => {
             if (!document.querySelector('#st_qq_notification_settings')) {
                 tryMount();
             }
         });
-        settingsObserver.observe(document.body, { childList: true, subtree: true });
+
+        settingsObserver.observe(document.body, {
+            childList: true,
+            subtree: true,
+        });
     }
 }
 
