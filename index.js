@@ -392,11 +392,16 @@ async function loadSettingsUI() {
         const context = SillyTavern.getContext();
         let html = '';
 
+        // 不同酒馆版本的设置容器和模板渲染时机不同；模板渲染失败时继续走静态文件兜底。
         if (context.renderExtensionTemplateAsync) {
-            html = await context.renderExtensionTemplateAsync(
-                'third-party/st-qq-notification',
-                'settings',
-            );
+            try {
+                html = await context.renderExtensionTemplateAsync(
+                    'third-party/st-qq-notification',
+                    'settings',
+                );
+            } catch (error) {
+                console.warn('[ST QQ Notification] Extension template render failed:', error);
+            }
         }
 
         if (!html) {
@@ -472,8 +477,17 @@ async function init() {
 
     getSettings();
 
-    if (!(await loadSettingsUI()) && event_types.APP_READY) {
-        eventSource.once(event_types.APP_READY, loadSettingsUI);
+    if (!(await loadSettingsUI())) {
+        if (event_types.APP_READY) {
+            eventSource.once(event_types.APP_READY, loadSettingsUI);
+        }
+
+        // 某些版本在 APP_READY 后才创建设置容器，再补几次加载，避免插件本身正常运行但设置面板消失。
+        for (const delay of [500, 1500, 3000]) {
+            setTimeout(() => {
+                loadSettingsUI();
+            }, delay);
+        }
     }
 
     if (Notification.permission === 'granted') {
