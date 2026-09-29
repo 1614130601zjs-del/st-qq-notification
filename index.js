@@ -380,24 +380,10 @@ async function showTestNotification() {
 async function loadSettingsUI() {
     if (settingsUiLoaded) return true;
 
-    let target = $('#extensions_settings2').length
-        ? $('#extensions_settings2')
-        : $('#extensions_settings').length
-            ? $('#extensions_settings')
-            : null;
-
-    // 某些酒馆版本/布局没有可用的扩展设置容器。
-    // 此时直接创建一个固定的“消息通知”折叠入口，保证用户始终有地方可以点击打开设置。
-    if (!target || !target.length) {
-        target = $('<div class="stq-floating-settings"></div>');
-        $('body').append(target);
-    }
-
     try {
         const context = SillyTavern.getContext();
         let html = '';
 
-        // 不同酒馆版本的设置容器和模板渲染时机不同；模板渲染失败时继续走静态文件兜底。
         if (context.renderExtensionTemplateAsync) {
             try {
                 html = await context.renderExtensionTemplateAsync(
@@ -410,60 +396,97 @@ async function loadSettingsUI() {
         }
 
         if (!html) {
-            html = await $.get('scripts/extensions/third-party/st-qq-notification/settings.html');
+            try {
+                html = await $.get('scripts/extensions/third-party/st-qq-notification/settings.html');
+            } catch (error) {
+                console.warn('[ST QQ Notification] Settings file load failed:', error);
+            }
         }
 
-        if (!html) return false;
+        // 最终兜底：即使酒馆没有扩展设置容器、模板接口或静态文件加载失败，
+        // 也直接生成完整的设置面板。
+        if (!html) {
+            html = `
+                <details id="st_qq_notification_settings" class="stq-settings">
+                    <summary>消息通知</summary>
+                    <div class="stq-wrap">
+                        <div class="stq-row"><label class="checkbox_label"><input id="stq_enabled" type="checkbox"><span>启用通知</span></label></div>
+                        <div class="stq-row"><label class="checkbox_label"><input id="stq_background_only" type="checkbox"><span>仅酒馆在后台时通知</span></label></div>
+                        <div class="stq-row"><label class="checkbox_label"><input id="stq_vibrate" type="checkbox"><span>震动</span></label></div>
+                        <div class="stq-row"><label>消息预览字数 <input id="stq_length" class="text_pole" type="number" min="10" max="120" step="5"></label></div>
+                        <div class="stq-actions"><button id="stq_permission" class="menu_button">请求通知权限</button><button id="stq_test" class="menu_button">测试通知</button></div>
+                        <div id="stq_status" class="stq-status">检查通知权限中…</div>
+                    </div>
+                </details>`;
+        }
 
-        target.find('#st_qq_notification_settings').remove();
-        target.append(html);
+        // 酒馆原生扩展设置区：能找到就正常放进去。
+        const nativeTarget = $('#extensions_settings2').length
+            ? $('#extensions_settings2')
+            : $('#extensions_settings').length
+                ? $('#extensions_settings')
+                : null;
 
+        if (nativeTarget && nativeTarget.length) {
+            nativeTarget.find('#st_qq_notification_settings').remove();
+            nativeTarget.append(html);
+        }
+
+        // 独立的固定入口：不依赖酒馆设置面板，始终有一个肉眼可见、可点击的“消息通知”按钮。
+        $('#stq_guaranteed_entry, #stq_guaranteed_panel').remove();
+
+        const entry = $(`
+            <button id="stq_guaranteed_entry" type="button"
+                style="position:fixed;right:14px;bottom:82px;z-index:999999;padding:9px 14px;border:1px solid rgba(255,255,255,.18);border-radius:9px;background:rgba(30,30,30,.94);color:#fff;font-size:14px;box-shadow:0 3px 14px rgba(0,0,0,.35);cursor:pointer;">
+                消息通知
+            </button>`);
+
+        const panel = $(`
+            <div id="stq_guaranteed_panel"
+                style="display:none;position:fixed;right:14px;bottom:128px;z-index:1000000;width:min(360px,calc(100vw - 28px));max-height:70vh;overflow:auto;padding:10px;border-radius:10px;background:rgba(25,25,25,.97);color:#fff;box-shadow:0 5px 24px rgba(0,0,0,.45);">
+            </div>`);
+
+        const floatingHtml = html.replace('id="st_qq_notification_settings"', 'id="st_qq_notification_settings_floating"');
+        panel.html(floatingHtml);
+        $('body').append(entry, panel);
+
+        entry.on('click.stq', () => panel.stop(true, true).fadeToggle(120));
+
+        const root = panel.find('#st_qq_notification_settings_floating');
         const settings = getSettings();
 
-        $('#stq_enabled')
+        panel.find('#stq_enabled')
             .prop('checked', settings.enabled)
-            .off('change.stq')
             .on('change.stq', function () {
                 settings.enabled = $(this).prop('checked');
                 saveSettings();
             });
 
-        $('#stq_background_only')
+        panel.find('#stq_background_only')
             .prop('checked', settings.backgroundOnly)
-            .off('change.stq')
             .on('change.stq', function () {
                 settings.backgroundOnly = $(this).prop('checked');
                 saveSettings();
             });
 
-        $('#stq_vibrate')
+        panel.find('#stq_vibrate')
             .prop('checked', settings.vibrate)
-            .off('change.stq')
             .on('change.stq', function () {
                 settings.vibrate = $(this).prop('checked');
                 saveSettings();
             });
 
-        $('#stq_length')
+        panel.find('#stq_length')
             .val(settings.previewLength)
-            .off('change.stq')
             .on('change.stq', function () {
-                const value = Math.max(
-                    10,
-                    Math.min(120, Number.parseInt($(this).val(), 10) || 50),
-                );
+                const value = Math.max(10, Math.min(120, Number.parseInt($(this).val(), 10) || 50));
                 settings.previewLength = value;
                 $(this).val(value);
                 saveSettings();
             });
 
-        $('#stq_permission')
-            .off('click.stq')
-            .on('click.stq', requestPermission);
-
-        $('#stq_test')
-            .off('click.stq')
-            .on('click.stq', showTestNotification);
+        panel.find('#stq_permission').on('click.stq', requestPermission);
+        panel.find('#stq_test').on('click.stq', showTestNotification);
 
         settingsUiLoaded = true;
         updateStatus();
@@ -473,7 +496,6 @@ async function loadSettingsUI() {
         return false;
     }
 }
-
 async function init() {
     const {
         eventSource,
