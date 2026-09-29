@@ -8,6 +8,8 @@ const DEFAULT_SETTINGS = {
 };
 
 let notificationRegistration = null;
+let settingsUiLoaded = false;
+let eventsBound = false;
 
 function getSettings() {
     const { extensionSettings, saveSettingsDebounced } = SillyTavern.getContext();
@@ -34,12 +36,12 @@ function getPreview(text, maxLength) {
     let source = String(text ?? '');
 
     // 如果消息使用 <content>...</content> 包裹正文，只取其中内容。
-    const contentMatch = source.match(/<content(?:\\s[^>]*)?>([\\s\\S]*?)<\\/content>/i);
+    const contentMatch = source.match(/<content(?:\s[^>]*)?>([\s\S]*?)<\/content>/i);
     if (contentMatch) source = contentMatch[1];
 
     const clean = source
         .replace(/<[^>]*>/g, '')
-        .replace(/\\s+/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
 
     if (!clean) return '';
@@ -138,7 +140,6 @@ async function requestPermission() {
 
 async function getNotificationRegistration() {
     if (notificationRegistration) return notificationRegistration;
-
     if (!('serviceWorker' in navigator)) return null;
 
     try {
@@ -157,7 +158,13 @@ async function showNotification(messageId) {
 
     if (!settings.enabled) return;
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
-    if (settings.backgroundOnly && document.hasFocus()) return;
+
+    // 仅当前台正在使用酒馆时跳过；切到后台或页面失焦后允许通知。
+    if (settings.backgroundOnly
+        && document.visibilityState === 'visible'
+        && document.hasFocus()) {
+        return;
+    }
 
     const context = SillyTavern.getContext();
     const message = context.chat?.[messageId];
@@ -242,62 +249,121 @@ async function showTestNotification() {
     }
 }
 
+async function loadSettingsUI() {
+    if (settingsUiLoaded) return true;
+
+    const target = $('#extensions_settings2').length
+        ? $('#extensions_settings2')
+        : $('#extensions_settings').length
+            ? $('#extensions_settings')
+            : null;
+
+    if (!target || !target.length) return false;
+
+    try {
+        const context = SillyTavern.getContext();
+        let html = '';
+
+        if (context.renderExtensionTemplateAsync) {
+            html = await context.renderExtensionTemplateAsync(
+                'third-party/st-qq-notification',
+                'settings',
+            );
+        }
+
+        if (!html) {
+            html = await $.get('scripts/extensions/third-party/st-qq-notification/settings.html');
+        }
+
+        if (!html) return false;
+
+        // 防止重复注入。
+        target.find('#st_qq_notification_settings').remove();
+        target.append(html);
+
+        const settings = getSettings();
+
+        $('#stq_enabled')
+            .prop('checked', settings.enabled)
+            .off('change.stq')
+            .on('change.stq', function () {
+                settings.enabled = $(this).prop('checked');
+                saveSettings();
+            });
+
+        $('#stq_background_only')
+            .prop('checked', settings.backgroundOnly)
+            .off('change.stq')
+            .on('change.stq', function () {
+                settings.backgroundOnly = $(this).prop('checked');
+                saveSettings();
+            });
+
+        $('#stq_vibrate')
+            .prop('checked', settings.vibrate)
+            .off('change.stq')
+            .on('change.stq', function () {
+                settings.vibrate = $(this).prop('checked');
+                saveSettings();
+            });
+
+        $('#stq_length')
+            .val(settings.previewLength)
+            .off('change.stq')
+            .on('change.stq', function () {
+                const value = Math.max(
+                    10,
+                    Math.min(120, Number.parseInt($(this).val(), 10) || 50),
+                );
+                settings.previewLength = value;
+                $(this).val(value);
+                saveSettings();
+            });
+
+        $('#stq_permission')
+            .off('click.stq')
+            .on('click.stq', requestPermission);
+
+        $('#stq_test')
+            .off('click.stq')
+            .on('click.stq', showTestNotification);
+
+        settingsUiLoaded = true;
+        updateStatus();
+        return true;
+    } catch (error) {
+        console.error('[ST QQ Notification] Failed to load settings:', error);
+        return false;
+    }
+}
+
 async function init() {
     const {
         eventSource,
         event_types,
-        renderExtensionTemplateAsync,
     } = SillyTavern.getContext();
 
-    const settings = getSettings();
+    getSettings();
 
-    try {
-        const html = renderExtensionTemplateAsync
-            ? await renderExtensionTemplateAsync('third-party/st-qq-notification', 'settings')
-            : await $.get('scripts/extensions/third-party/st-qq-notification/settings.html');
-
-        $('#extensions_settings2').append(html);
-
-        $('#stq_enabled').prop('checked', settings.enabled).on('change', function () {
-            settings.enabled = $(this).prop('checked');
-            saveSettings();
-        });
-
-        $('#stq_background_only').prop('checked', settings.backgroundOnly).on('change', function () {
-            settings.backgroundOnly = $(this).prop('checked');
-            saveSettings();
-        });
-
-        $('#stq_vibrate').prop('checked', settings.vibrate).on('change', function () {
-            settings.vibrate = $(this).prop('checked');
-            saveSettings();
-        });
-
-        $('#stq_length').val(settings.previewLength).on('change', function () {
-            const value = Math.max(10, Math.min(120, Number.parseInt($(this).val(), 10) || 50));
-            settings.previewLength = value;
-            $(this).val(value);
-            saveSettings();
-        });
-
-        $('#stq_permission').on('click', requestPermission);
-        $('#stq_test').on('click', showTestNotification);
-
-        updateStatus();
-
-        if (Notification.permission === 'granted') {
-            try {
-                await registerNotificationWorker();
-            } catch (error) {
-                console.warn('[ST QQ Notification] Existing permission but worker setup failed:', error);
-                updateStatus('通知权限已有，但通知服务尚未准备好，请重新点击“请求通知权限”。', 'warn');
-            }
-        }
-    } catch (error) {
-        console.error('[ST QQ Notification] Failed to load settings:', error);
+    // 某些 ST 版本执行 activate hook 时设置面板 DOM 尚未完成，
+    // 因此先尝试一次；如果还没有目标容器，再在 APP_READY 后补一次。
+    if (!(await loadSettingsUI()) && event_types.APP_READY) {
+        eventSource.once(event_types.APP_READY, loadSettingsUI);
     }
 
-    eventSource.on(event_types.MESSAGE_RECEIVED, showNotification);
+    if (Notification.permission === 'granted') {
+        try {
+            await registerNotificationWorker();
+        } catch (error) {
+            console.warn('[ST QQ Notification] Existing permission but worker setup failed:', error);
+        }
+    }
+
+    if (!eventsBound) {
+        eventSource.on(event_types.MESSAGE_RECEIVED, showNotification);
+        eventsBound = true;
+    }
+
     console.log('[ST QQ Notification] Loaded.');
 }
 
