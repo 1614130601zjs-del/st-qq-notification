@@ -62,14 +62,19 @@ function getPreview(text, maxLength) {
     return clean.length > maxLength ? clean.slice(0, maxLength) + '…' : clean;
 }
 function getCharacterAvatar(context, message) {
-    const avatar = message.force_avatar || context.characters?.[context.characterId]?.avatar;
-    if (!avatar) return undefined;
+    if (message.force_avatar) {
+        return new URL(message.force_avatar, location.origin).href;
+    }
+
+    const character = context.characters?.[context.characterId];
+    if (!character?.avatar) return undefined;
 
     return new URL(
-        '/thumbnail?type=avatar&file=' + encodeURIComponent(avatar),
+        `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`,
         location.origin,
     ).href;
 }
+
 function updateStatus(message, type = '') {
     const el = $('#stq_status');
     if (!el.length) return;
