@@ -171,7 +171,7 @@ async function showNotification(messageId) {
             body,
             tag,
             requireInteraction: true,
-            renotify: false,
+            renotify: true,
             vibrate: settings.vibrate ? [180, 90, 180] : undefined,
             data: {
                 url: location.href,
@@ -212,7 +212,7 @@ async function showTestNotification() {
             body: 'QQ式回复通知测试：系统通知、常驻和震动功能已发送。',
             tag: `${EXT_KEY}-test`,
             requireInteraction: true,
-            renotify: false,
+            renotify: true,
             vibrate: settings.vibrate ? [180, 90, 180] : undefined,
             data: {
                 url: location.href,
