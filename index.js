@@ -9,6 +9,7 @@ const DEFAULT_SETTINGS = {
 
 let notificationRegistration = null;
 let settingsUiLoaded = false;
+let settingsMounting = false;
 let settingsObserver = null;
 let eventsBound = false;
 
@@ -378,48 +379,50 @@ async function showTestNotification() {
     }
 }
 
-function buildSettingsHtml() {
-    return `
-        <div id="st_qq_notification_settings" class="stq-extension-settings">
-            <div class="inline-drawer">
-                <div class="inline-drawer-toggle inline-drawer-header">
-                    <b>消息通知</b>
-                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
-                </div>
-                <div class="inline-drawer-content">
-                    <div class="stq-wrap">
-                        <div class="stq-row">
-                            <label class="checkbox_label">
-                                <input id="stq_enabled" type="checkbox">
-                                <span>启用通知</span>
-                            </label>
-                        </div>
-                        <div class="stq-row">
-                            <label class="checkbox_label">
-                                <input id="stq_background_only" type="checkbox">
-                                <span>仅酒馆在后台时通知</span>
-                            </label>
-                        </div>
-                        <div class="stq-row">
-                            <label class="checkbox_label">
-                                <input id="stq_vibrate" type="checkbox">
-                                <span>震动</span>
-                            </label>
-                        </div>
-                        <div class="stq-row">
-                            <label>消息预览字数
-                                <input id="stq_length" class="text_pole" type="number" min="10" max="120" step="5">
-                            </label>
-                        </div>
-                        <div class="stq-actions">
-                            <button id="stq_permission" class="menu_button">请求通知权限</button>
-                            <button id="stq_test" class="menu_button">测试通知</button>
-                        </div>
-                        <div id="stq_status" class="stq-status">检查通知权限中…</div>
-                    </div>
-                </div>
-            </div>
-        </div>`;
+async function mountSettingsUI() {
+    const target = $('#extensions_settings2').length
+        ? $('#extensions_settings2')
+        : $('#extensions_settings').length
+            ? $('#extensions_settings')
+            : null;
+
+    if (!target || !target.length) return false;
+    if (target.find('#st_qq_notification_settings').length) {
+        settingsUiLoaded = true;
+        bindSettingsControls(target.find('#st_qq_notification_settings'));
+        updateStatus();
+        return true;
+    }
+
+    if (settingsMounting) return false;
+    settingsMounting = true;
+
+    try {
+        const { renderExtensionTemplateAsync } = SillyTavern.getContext();
+        const settingsHtml = await renderExtensionTemplateAsync(
+            'third-party/st-qq-notification',
+            'settings',
+        );
+
+        // 酒馆官方推荐的扩展设置挂载方式：把 settings.html 渲染后直接追加到扩展设置面板。
+        target.append(settingsHtml);
+
+        const root = target.find('#st_qq_notification_settings');
+        if (!root.length) {
+            throw new Error('settings.html rendered but settings root was not found');
+        }
+
+        bindSettingsControls(root);
+        settingsUiLoaded = true;
+        updateStatus();
+        return true;
+    } catch (error) {
+        console.error('[ST QQ Notification] Failed to render settings template:', error);
+        settingsUiLoaded = false;
+        return false;
+    } finally {
+        settingsMounting = false;
+    }
 }
 
 function bindSettingsControls(root) {
@@ -447,90 +450,20 @@ function bindSettingsControls(root) {
     root.find('#stq_test').off('click.stq').on('click.stq', showTestNotification);
 }
 
-function mountSettingsUI() {
-    const target = $('#extensions_settings2').length
-        ? $('#extensions_settings2')
-        : $('#extensions_settings').length
-            ? $('#extensions_settings')
-            : null;
-
-    if (!target || !target.length) return false;
-    if (target.find('#st_qq_notification_settings').length) {
-        settingsUiLoaded = true;
-        bindSettingsControls(target.find('#st_qq_notification_settings'));
-        updateStatus();
-        return true;
-    }
-
-    const node = $(buildSettingsHtml());
-    target.append(node);
-    bindSettingsControls(node);
-    settingsUiLoaded = true;
-    updateStatus();
-    return true;
-}
-
 async function loadSettingsUI() {
-    if (settingsUiLoaded && $('#st_qq_notification_settings').length) return true;
-
-    try {
-        return mountSettingsUI();
-    } catch (error) {
-        console.error('[ST QQ Notification] Failed to mount settings:', error);
-        return false;
-    }
-}
-
-function buildFallbackSettingsHtml() {
-    if (document.querySelector('#stq_fallback_settings_button')) return;
-
-    const button = $(`
-        <button id="stq_fallback_settings_button" class="menu_button stq-fallback-button" type="button">
-            消息通知设置
-        </button>`);
-
-    const panel = $(`
-        <div id="stq_fallback_settings_panel" class="stq-floating-settings" hidden>
-            <div class="stq-fallback-header">
-                <b>消息通知</b>
-                <button id="stq_fallback_close" class="menu_button" type="button">关闭</button>
-            </div>
-            <div id="stq_fallback_content"></div>
-        </div>`);
-
-    panel.find('#stq_fallback_content').append($(buildSettingsHtml()));
-    $('body').append(button, panel);
-
-    button.on('click.stq', () => {
-        panel.prop('hidden', false);
-        bindSettingsControls(panel);
-        updateStatus();
-    });
-    panel.find('#stq_fallback_close').on('click.stq', () => {
-        panel.prop('hidden', true);
-    });
-    bindSettingsControls(panel);
-    updateStatus();
-}
-
-function removeFallbackSettings() {
-    $('#stq_fallback_settings_button, #stq_fallback_settings_panel').remove();
+    return mountSettingsUI();
 }
 
 function scheduleSettingsMount(eventSource, eventTypes) {
     const tryMount = () => {
-        const mounted = mountSettingsUI();
-
-        // 正常的扩展设置面板存在时，不显示备用入口。
-        if (mounted) {
-            removeFallbackSettings();
-        } else {
-            // 如果酒馆尚未创建扩展设置容器，仍提供一个绝对可见的备用入口。
-            buildFallbackSettingsHtml();
-        }
+        void mountSettingsUI();
     };
 
     tryMount();
+
+    if (eventTypes.APP_INITIALIZED) {
+        eventSource.on(eventTypes.APP_INITIALIZED, tryMount);
+    }
 
     if (eventTypes.APP_READY) {
         eventSource.on(eventTypes.APP_READY, tryMount);
@@ -540,9 +473,12 @@ function scheduleSettingsMount(eventSource, eventTypes) {
         setTimeout(tryMount, delay);
     }
 
+    // 扩展面板可能在之后才被酒馆创建；持续监听 DOM，直到设置真正挂载。
     if (!settingsObserver && document.body) {
         settingsObserver = new MutationObserver(() => {
-            tryMount();
+            if (!document.querySelector('#st_qq_notification_settings')) {
+                tryMount();
+            }
         });
         settingsObserver.observe(document.body, { childList: true, subtree: true });
     }
