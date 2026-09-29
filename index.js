@@ -475,10 +475,26 @@ async function init() {
 
     getSettings();
 
-    // 某些 ST 版本执行 activate hook 时设置面板 DOM 尚未完成，
-    // 因此先尝试一次；如果还没有目标容器，再在 APP_READY 后补一次。
-    if (!(await loadSettingsUI()) && event_types.APP_READY) {
-        eventSource.once(event_types.APP_READY, loadSettingsUI);
+    // activate 发生在酒馆 UI 完整建立之前时，不要阻塞 activate。
+    // APP_INITIALIZED 是设置面板等 UI 已建立后的正确时机；
+    // APP_READY 作为旧版本酒馆的兼容兜底。
+    const scheduleSettingsUI = () => {
+        if (settingsUiLoaded || settingsMounting) return;
+        settingsMounting = true;
+
+        Promise.resolve(loadSettingsUI())
+            .finally(() => {
+                settingsMounting = false;
+            });
+    };
+
+    if (!loadSettingsUI()) {
+        if (event_types.APP_INITIALIZED) {
+            eventSource.once(event_types.APP_INITIALIZED, scheduleSettingsUI);
+        }
+        if (event_types.APP_READY) {
+            eventSource.once(event_types.APP_READY, scheduleSettingsUI);
+        }
     }
 
     if (Notification.permission === 'granted') {
