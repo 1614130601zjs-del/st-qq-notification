@@ -70,7 +70,7 @@ function getCharacterAvatar(context, message) {
     if (!character?.avatar) return undefined;
 
     return new URL(
-        `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}&width=512&height=512&width=512&height=512`,
+        `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}&width=512&height=512&width=512&height=512&width=512&height=512`,
         location.origin,
     ).href;
 }
