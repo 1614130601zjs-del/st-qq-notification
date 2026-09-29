@@ -8,7 +8,7 @@ const DEFAULT_SETTINGS = {
 };
 
 let notificationRegistration = null;
-let settingsUiLoaded = false;
+let settingsUiLoaded = false;\nlet settingsObserver = null;
 let eventsBound = false;
 
 let generationState = null;
@@ -379,113 +379,101 @@ async function showTestNotification() {
 
 function buildSettingsHtml() {
     return `
-        <details id="st_qq_notification_settings" class="stq-settings">
-            <summary>消息通知</summary>
-            <div class="stq-wrap">
-                <div class="stq-row">
-                    <label class="checkbox_label">
-                        <input id="stq_enabled" type="checkbox">
-                        <span>启用通知</span>
-                    </label>
+        <div id="st_qq_notification_settings" class="stq-extension-settings">
+            <div class="inline-drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>消息通知</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
                 </div>
-                <div class="stq-row">
-                    <label class="checkbox_label">
-                        <input id="stq_background_only" type="checkbox">
-                        <span>仅酒馆在后台时通知</span>
-                    </label>
+                <div class="inline-drawer-content">
+                    <div class="stq-wrap">
+                        <div class="stq-row">
+                            <label class="checkbox_label">
+                                <input id="stq_enabled" type="checkbox">
+                                <span>启用通知</span>
+                            </label>
+                        </div>
+                        <div class="stq-row">
+                            <label class="checkbox_label">
+                                <input id="stq_background_only" type="checkbox">
+                                <span>仅酒馆在后台时通知</span>
+                            </label>
+                        </div>
+                        <div class="stq-row">
+                            <label class="checkbox_label">
+                                <input id="stq_vibrate" type="checkbox">
+                                <span>震动</span>
+                            </label>
+                        </div>
+                        <div class="stq-row">
+                            <label>消息预览字数
+                                <input id="stq_length" class="text_pole" type="number" min="10" max="120" step="5">
+                            </label>
+                        </div>
+                        <div class="stq-actions">
+                            <button id="stq_permission" class="menu_button">请求通知权限</button>
+                            <button id="stq_test" class="menu_button">测试通知</button>
+                        </div>
+                        <div id="stq_status" class="stq-status">检查通知权限中…</div>
+                    </div>
                 </div>
-                <div class="stq-row">
-                    <label class="checkbox_label">
-                        <input id="stq_vibrate" type="checkbox">
-                        <span>震动</span>
-                    </label>
-                </div>
-                <div class="stq-row">
-                    <label>消息预览字数
-                        <input id="stq_length" class="text_pole" type="number" min="10" max="120" step="5">
-                    </label>
-                </div>
-                <div class="stq-actions">
-                    <button id="stq_permission" class="menu_button">请求通知权限</button>
-                    <button id="stq_test" class="menu_button">测试通知</button>
-                </div>
-                <div id="stq_status" class="stq-status">检查通知权限中…</div>
             </div>
-        </details>`;
+        </div>`;
 }
 
 function bindSettingsControls(root) {
     const settings = getSettings();
 
-    root.find('#stq_enabled')
-        .prop('checked', settings.enabled)
-        .off('change.stq')
-        .on('change.stq', function () {
-            settings.enabled = $(this).prop('checked');
-            saveSettings();
-        });
+    root.find('#stq_enabled').prop('checked', settings.enabled).off('change.stq').on('change.stq', function () {
+        settings.enabled = $(this).prop('checked');
+        saveSettings();
+    });
+    root.find('#stq_background_only').prop('checked', settings.backgroundOnly).off('change.stq').on('change.stq', function () {
+        settings.backgroundOnly = $(this).prop('checked');
+        saveSettings();
+    });
+    root.find('#stq_vibrate').prop('checked', settings.vibrate).off('change.stq').on('change.stq', function () {
+        settings.vibrate = $(this).prop('checked');
+        saveSettings();
+    });
+    root.find('#stq_length').val(settings.previewLength).off('change.stq').on('change.stq', function () {
+        const value = Math.max(10, Math.min(120, Number.parseInt($(this).val(), 10) || 50));
+        settings.previewLength = value;
+        $(this).val(value);
+        saveSettings();
+    });
+    root.find('#stq_permission').off('click.stq').on('click.stq', requestPermission);
+    root.find('#stq_test').off('click.stq').on('click.stq', showTestNotification);
+}
 
-    root.find('#stq_background_only')
-        .prop('checked', settings.backgroundOnly)
-        .off('change.stq')
-        .on('change.stq', function () {
-            settings.backgroundOnly = $(this).prop('checked');
-            saveSettings();
-        });
+function mountSettingsUI() {
+    const target = $('#extensions_settings2').length
+        ? $('#extensions_settings2')
+        : $('#extensions_settings').length
+            ? $('#extensions_settings')
+            : null;
 
-    root.find('#stq_vibrate')
-        .prop('checked', settings.vibrate)
-        .off('change.stq')
-        .on('change.stq', function () {
-            settings.vibrate = $(this).prop('checked');
-            saveSettings();
-        });
+    if (!target || !target.length) return false;
+    if (target.find('#st_qq_notification_settings').length) {
+        settingsUiLoaded = true;
+        bindSettingsControls(target.find('#st_qq_notification_settings'));
+        updateStatus();
+        return true;
+    }
 
-    root.find('#stq_length')
-        .val(settings.previewLength)
-        .off('change.stq')
-        .on('change.stq', function () {
-            const value = Math.max(10, Math.min(120, Number.parseInt($(this).val(), 10) || 50));
-            settings.previewLength = value;
-            $(this).val(value);
-            saveSettings();
-        });
-
-    root.find('#stq_permission')
-        .off('click.stq')
-        .on('click.stq', requestPermission);
-
-    root.find('#stq_test')
-        .off('click.stq')
-        .on('click.stq', showTestNotification);
+    const node = $(buildSettingsHtml());
+    target.append(node);
+    bindSettingsControls(node);
+    settingsUiLoaded = true;
+    updateStatus();
+    return true;
 }
 
 async function loadSettingsUI() {
-    if (settingsUiLoaded) return true;
+    if (settingsUiLoaded && $('#st_qq_notification_settings').length) return true;
 
     try {
-        // 不再依赖模板渲染；直接生成设置 HTML，避免不同酒馆版本的模板加载失败。
-        const html = buildSettingsHtml();
-
-        const target = $('#extensions_settings2').length
-            ? $('#extensions_settings2')
-            : $('#extensions_settings').length
-                ? $('#extensions_settings')
-                : null;
-
-        if (!target || !target.length) {
-            return false;
-        }
-
-        target.find('#st_qq_notification_settings').remove();
-        const node = $(html);
-        target.append(node);
-
-        bindSettingsControls(node);
-
-        settingsUiLoaded = true;
-        updateStatus();
-        return true;
+        return mountSettingsUI();
     } catch (error) {
         console.error('[ST QQ Notification] Failed to mount settings:', error);
         return false;
@@ -494,7 +482,12 @@ async function loadSettingsUI() {
 
 function scheduleSettingsMount(eventSource, eventTypes) {
     const tryMount = () => {
-        if (!settingsUiLoaded) loadSettingsUI();
+        if (mountSettingsUI()) {
+            if (settingsObserver) {
+                settingsObserver.disconnect();
+                settingsObserver = null;
+            }
+        }
     };
 
     tryMount();
@@ -503,9 +496,13 @@ function scheduleSettingsMount(eventSource, eventTypes) {
         eventSource.on(eventTypes.APP_READY, tryMount);
     }
 
-    // 手机端设置面板通常是异步创建的；持续尝试一小段时间。
-    for (const delay of [300, 800, 1500, 2500, 4000, 6000]) {
+    for (const delay of [300, 800, 1500, 2500, 4000, 6000, 10000]) {
         setTimeout(tryMount, delay);
+    }
+
+    if (!settingsObserver && document.body) {
+        settingsObserver = new MutationObserver(tryMount);
+        settingsObserver.observe(document.body, { childList: true, subtree: true });
     }
 }
 
