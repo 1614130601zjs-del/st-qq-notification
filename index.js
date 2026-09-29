@@ -380,13 +380,18 @@ async function showTestNotification() {
 async function loadSettingsUI() {
     if (settingsUiLoaded) return true;
 
-    const target = $('#extensions_settings2').length
+    let target = $('#extensions_settings2').length
         ? $('#extensions_settings2')
         : $('#extensions_settings').length
             ? $('#extensions_settings')
             : null;
 
-    if (!target || !target.length) return false;
+    // 某些酒馆版本/布局没有可用的扩展设置容器。
+    // 此时直接创建一个固定的“消息通知”折叠入口，保证用户始终有地方可以点击打开设置。
+    if (!target || !target.length) {
+        target = $('<div class="stq-floating-settings"></div>');
+        $('body').append(target);
+    }
 
     try {
         const context = SillyTavern.getContext();
