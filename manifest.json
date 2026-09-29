@@ -6,7 +6,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "1614130601zjs-del",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "homePage": "https://github.com/1614130601zjs-del/st-qq-notification",
   "auto_update": true,
   "hooks": {
