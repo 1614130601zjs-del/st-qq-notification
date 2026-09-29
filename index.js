@@ -198,8 +198,10 @@ async function showNotification(messageId) {
     try {
         await registration.showNotification(title, {
             body,
-            tag,
             icon: avatar,
+            badge: avatar,
+            image: avatar,
+            tag,
             requireInteraction: true,
             renotify: true,
             vibrate: settings.vibrate ? [180, 90, 180] : undefined,
@@ -235,11 +237,20 @@ async function showTestNotification() {
     const settings = getSettings();
     const context = SillyTavern.getContext();
     const character = context.characters?.[context.characterId];
+    const testAvatar = character?.avatar
+        ? new URL(
+            `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`,
+            location.origin,
+        ).href
+        : undefined;
     const testTitle = character?.name || 'SillyTavern';
 
     try {
         await registration.showNotification(testTitle, {
             body: 'QQ式回复通知测试：系统通知、常驻和震动功能已发送。',
+            icon: testAvatar,
+            badge: testAvatar,
+            image: testAvatar,
             tag: `${EXT_KEY}-test`,
             requireInteraction: true,
             renotify: true,
