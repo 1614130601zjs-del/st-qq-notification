@@ -47,20 +47,6 @@ function getPreview(text, maxLength) {
     return clean.length > maxLength ? clean.slice(0, maxLength) + '…' : clean;
 }
 
-function getCharacterAvatar(context, message) {
-    if (message.force_avatar) {
-        return new URL(message.force_avatar, location.origin).href;
-    }
-
-    const character = context.characters?.[context.characterId];
-    if (!character?.avatar) return undefined;
-
-    return new URL(
-        `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`,
-        location.origin,
-    ).href;
-}
-
 function updateStatus(message, type = '') {
     const el = $('#stq_status');
     if (!el.length) return;
@@ -184,8 +170,8 @@ async function showNotification(messageId) {
         await registration.showNotification(title, {
             body,
             tag,
-            renotify: true,
             requireInteraction: true,
+            renotify: false,
             vibrate: settings.vibrate ? [180, 90, 180] : undefined,
             data: {
                 url: location.href,
@@ -226,7 +212,7 @@ async function showTestNotification() {
             body: 'QQ式回复通知测试：系统通知、常驻和震动功能已发送。',
             tag: `${EXT_KEY}-test`,
             requireInteraction: true,
-            renotify: true,
+            renotify: false,
             vibrate: settings.vibrate ? [180, 90, 180] : undefined,
             data: {
                 url: location.href,
