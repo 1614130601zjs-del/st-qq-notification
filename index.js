@@ -35,18 +35,32 @@ function saveSettings() {
 function getPreview(text, maxLength) {
     let source = String(text ?? '');
 
+    // 优先取 <content>，避免把文首状态栏当成正文。
     const contentMatch = source.match(/<content(?:\s[^>]*)?>([\s\S]*?)<\/content>/i);
-    if (contentMatch) source = contentMatch[1];
+    if (contentMatch) {
+        source = contentMatch[1];
+    } else {
+        // 去掉常见的 HTML/Markdown 状态栏容器。
+        source = source
+            .replace(/<script[\s\S]*?<\/script>/gi, '')
+            .replace(/<style[\s\S]*?<\/style>/gi, '')
+            .replace(/<[^>]*>/g, '');
+
+        // 去掉常见的状态栏包裹标记；正文不受影响。
+        source = source
+            .replace(/^\s*(?:\[?(?:status|state|状态栏|状态)\]?\s*[:：]?)[\s\S]*?(?:\n{2,}|\r\n{2,})/i, '')
+            .replace(/^\s*[-=~_*]{3,}\s*$/gm, '');
+    }
 
     const clean = source
-        .replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
         .replace(/\s+/g, ' ')
         .trim();
 
     if (!clean) return '';
     return clean.length > maxLength ? clean.slice(0, maxLength) + '…' : clean;
 }
-
 function getCharacterAvatar(context, message) {
     if (message.force_avatar) {
         return new URL(message.force_avatar, location.origin).href;
