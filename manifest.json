@@ -1,12 +1,12 @@
 {
-  "display_name": "QQ式回复通知",
+  "display_name": "消息通知",
   "loading_order": 1000,
   "requires": [],
   "optional": [],
   "js": "index.js",
   "css": "style.css",
   "author": "1614130601zjs-del",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "homePage": "https://github.com/1614130601zjs-del/st-qq-notification",
   "auto_update": true,
   "hooks": {
