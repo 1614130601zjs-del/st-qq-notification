@@ -483,12 +483,9 @@ async function loadSettingsUI() {
 
 function scheduleSettingsMount(eventSource, eventTypes) {
     const tryMount = () => {
-        if (mountSettingsUI()) {
-            if (settingsObserver) {
-                settingsObserver.disconnect();
-                settingsObserver = null;
-            }
-        }
+        // 酒馆的扩展设置面板可能在初始化后被重新创建/重绘。
+        // 因此这里不能在第一次挂载成功后停止监听，否则设置项可能随后消失。
+        mountSettingsUI();
     };
 
     tryMount();
@@ -502,7 +499,12 @@ function scheduleSettingsMount(eventSource, eventTypes) {
     }
 
     if (!settingsObserver && document.body) {
-        settingsObserver = new MutationObserver(tryMount);
+        settingsObserver = new MutationObserver(() => {
+            // 避免自己 append 设置项时造成无意义的递归挂载。
+            if (!document.querySelector('#st_qq_notification_settings')) {
+                tryMount();
+            }
+        });
         settingsObserver.observe(document.body, { childList: true, subtree: true });
     }
 }
