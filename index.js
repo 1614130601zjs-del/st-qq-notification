@@ -65,13 +65,11 @@ function getCharacterAvatar(context, message) {
     const avatar = message.force_avatar || context.characters?.[context.characterId]?.avatar;
     if (!avatar) return undefined;
 
-    // 请求方形头像缩略图，避免 Android 通知把竖图压扁。
     return new URL(
-        '/thumbnail?type=avatar&file=' + encodeURIComponent(avatar) + '&width=256&height=256',
+        '/thumbnail?type=avatar&file=' + encodeURIComponent(avatar),
         location.origin,
     ).href;
 }
-
 function updateStatus(message, type = '') {
     const el = $('#stq_status');
     if (!el.length) return;
