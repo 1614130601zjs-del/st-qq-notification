@@ -27,7 +27,7 @@ function saveSettings() {
 function getPreview(text, maxLength) {
     const clean = String(text ?? '')
         .replace(/<[^>]*>/g, '')
-        .replace(/\\s+/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
     if (!clean) return '';
     return clean.length > maxLength ? clean.slice(0, maxLength) + '…' : clean;
