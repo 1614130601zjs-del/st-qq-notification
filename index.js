@@ -85,11 +85,22 @@ async function handleGenerationFinished() {
 
     const context = SillyTavern.getContext();
     const chat = context.chat || [];
-    const hasReply = chat
-        .slice(state.chatLength)
-        .some(isValidAssistantMessage);
+    const newMessages = chat.slice(state.chatLength);
 
-    if (!state.successNotified && !hasReply) {
+    // 生成结束时再次确认最终聊天内容。
+    // 如果 MESSAGE_RECEIVED 因事件时序没有及时触发，这里负责兜底成功通知。
+    const replyIndex = (() => {
+        for (let i = chat.length - 1; i >= state.chatLength; i--) {
+            if (isValidAssistantMessage(chat[i])) return i;
+        }
+        return -1;
+    })();
+
+    if (replyIndex !== -1) {
+        if (!state.successNotified) {
+            await showNotification(replyIndex);
+        }
+    } else {
         await showGenerationInterruptedNotification();
     }
 
