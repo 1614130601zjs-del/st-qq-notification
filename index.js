@@ -476,26 +476,28 @@ async function init() {
     getSettings();
 
     // activate 发生在酒馆 UI 完整建立之前时，不要阻塞 activate。
-    // APP_INITIALIZED 是设置面板等 UI 已建立后的正确时机；
-    // APP_READY 作为旧版本酒馆的兼容兜底。
+    // 注意：loadSettingsUI 是 async 函数，不能直接写成 if (!loadSettingsUI())，
+    // 否则拿到的是 Promise（永远为真），后续生命周期事件根本不会注册。
     const scheduleSettingsUI = () => {
         if (settingsUiLoaded || settingsMounting) return;
         settingsMounting = true;
 
-        Promise.resolve(loadSettingsUI())
+        loadSettingsUI()
             .finally(() => {
                 settingsMounting = false;
             });
     };
 
-    if (!loadSettingsUI()) {
+    loadSettingsUI().then(loaded => {
+        if (loaded || settingsUiLoaded) return;
+
         if (event_types.APP_INITIALIZED) {
             eventSource.once(event_types.APP_INITIALIZED, scheduleSettingsUI);
         }
         if (event_types.APP_READY) {
             eventSource.once(event_types.APP_READY, scheduleSettingsUI);
         }
-    }
+    });
 
     if (Notification.permission === 'granted') {
         try {
