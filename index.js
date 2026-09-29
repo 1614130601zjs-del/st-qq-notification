@@ -47,6 +47,20 @@ function getPreview(text, maxLength) {
     return clean.length > maxLength ? clean.slice(0, maxLength) + '…' : clean;
 }
 
+function getCharacterAvatar(context, message) {
+    if (message.force_avatar) {
+        return new URL(message.force_avatar, location.origin).href;
+    }
+
+    const character = context.characters?.[context.characterId];
+    if (!character?.avatar) return undefined;
+
+    return new URL(
+        '/thumbnail?type=avatar&file=' + encodeURIComponent(character.avatar),
+        location.origin,
+    ).href;
+}
+
 function updateStatus(message, type = '') {
     const el = $('#stq_status');
     if (!el.length) return;
@@ -165,11 +179,13 @@ async function showNotification(messageId) {
     const title = message.name || context.characters?.[context.characterId]?.name || 'SillyTavern';
     const body = getPreview(message.mes, settings.previewLength);
     const tag = `${EXT_KEY}-${context.characterId ?? 'chat'}`;
+    const avatar = getCharacterAvatar(context, message);
 
     try {
         await registration.showNotification(title, {
             body,
             tag,
+            icon: avatar,
             requireInteraction: true,
             renotify: true,
             vibrate: settings.vibrate ? [180, 90, 180] : undefined,
