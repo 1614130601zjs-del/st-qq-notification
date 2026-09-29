@@ -11,6 +11,91 @@ let notificationRegistration = null;
 let settingsUiLoaded = false;
 let eventsBound = false;
 
+let generationState = null;
+
+function isValidAssistantMessage(message) {
+    return Boolean(
+        message
+        && !message.is_user
+        && !message.is_system
+        && typeof message.mes === 'string'
+        && message.mes.trim()
+        && message.mes.trim() !== '...',
+    );
+}
+
+async function showGenerationInterruptedNotification() {
+    const settings = getSettings();
+
+    if (!settings.enabled) return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+    if (settings.backgroundOnly
+        && document.visibilityState === 'visible'
+        && document.hasFocus()) {
+        return;
+    }
+
+    const registration = await getNotificationRegistration();
+    if (!registration) return;
+
+    const context = SillyTavern.getContext();
+    const character = context.characters?.[context.characterId];
+    const title = character?.name || 'SillyTavern';
+    const avatar = character?.avatar
+        ? new URL(
+            '/thumbnail?type=avatar&file=' + encodeURIComponent(character.avatar) + '&width=512&height=512',
+            location.origin,
+        ).href
+        : undefined;
+
+    try {
+        await registration.showNotification(title, {
+            body: '输出中断或生成失败，请回到酒馆手动重新 Roll。',
+            icon: avatar,
+            badge: avatar,
+            image: avatar,
+            tag: EXT_KEY + '-' + (context.characterId ?? 'chat') + '-error',
+            requireInteraction: true,
+            renotify: true,
+            vibrate: settings.vibrate ? [180, 90, 180] : undefined,
+            data: {
+                url: location.href,
+                chatId: context.characterId ?? null,
+            },
+        });
+    } catch (error) {
+        console.error('[ST QQ Notification] interruption notification failed:', error);
+    }
+}
+
+async function handleGenerationStarted() {
+    const context = SillyTavern.getContext();
+    generationState = {
+        chatLength: context.chat?.length ?? 0,
+        successNotified: false,
+    };
+}
+
+async function handleGenerationFinished() {
+    const state = generationState;
+    if (!state) return;
+
+    await new Promise(resolve => setTimeout(resolve, 400));
+
+    const context = SillyTavern.getContext();
+    const chat = context.chat || [];
+    const hasReply = chat
+        .slice(state.chatLength)
+        .some(isValidAssistantMessage);
+
+    if (!state.successNotified && !hasReply) {
+        await showGenerationInterruptedNotification();
+    }
+
+    if (generationState === state) generationState = null;
+}
+
 function getSettings() {
     const { extensionSettings, saveSettingsDebounced } = SillyTavern.getContext();
 
@@ -210,6 +295,10 @@ async function showNotification(messageId) {
                 chatId: context.characterId ?? null,
             },
         });
+
+        if (generationState) {
+            generationState.successNotified = true;
+        }
     } catch (error) {
         console.error('[ST QQ Notification] showNotification failed:', error);
         updateStatus(`发送通知失败：${error.message || error}`, 'err');
@@ -374,6 +463,19 @@ async function init() {
 
     if (!eventsBound) {
         eventSource.on(event_types.MESSAGE_RECEIVED, showNotification);
+
+        if (event_types.GENERATION_STARTED) {
+            eventSource.on(event_types.GENERATION_STARTED, handleGenerationStarted);
+        }
+
+        if (event_types.GENERATION_ENDED) {
+            eventSource.on(event_types.GENERATION_ENDED, handleGenerationFinished);
+        }
+
+        if (event_types.GENERATION_STOPPED) {
+            eventSource.on(event_types.GENERATION_STOPPED, handleGenerationFinished);
+        }
+
         eventsBound = true;
     }
 
