@@ -35,7 +35,6 @@ function saveSettings() {
 function getPreview(text, maxLength) {
     let source = String(text ?? '');
 
-    // 如果消息使用 <content>...</content> 包裹正文，只取其中内容。
     const contentMatch = source.match(/<content(?:\s[^>]*)?>([\s\S]*?)<\/content>/i);
     if (contentMatch) source = contentMatch[1];
 
@@ -159,7 +158,6 @@ async function showNotification(messageId) {
     if (!settings.enabled) return;
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
-    // 仅当前台正在使用酒馆时跳过；切到后台或页面失焦后允许通知。
     if (settings.backgroundOnly
         && document.visibilityState === 'visible'
         && document.hasFocus()) {
@@ -186,9 +184,10 @@ async function showNotification(messageId) {
     try {
         await registration.showNotification(title, {
             body,
+            // Android 会把 Web Notification 的应用身份图标交给浏览器处理。
+            // 不再使用 image，避免角色头像被缩在通知右侧。
             icon: avatar,
             badge: avatar,
-            image: avatar,
             tag,
             renotify: true,
             requireInteraction: true,
@@ -236,9 +235,9 @@ async function showTestNotification() {
     try {
         await registration.showNotification(testTitle, {
             body: 'QQ式回复通知测试：系统通知、常驻和震动功能已发送。',
+            // 不使用 image，避免头像缩在通知右侧。
             icon: testAvatar,
             badge: testAvatar,
-            image: testAvatar,
             tag: `${EXT_KEY}-test`,
             requireInteraction: true,
             renotify: true,
@@ -281,7 +280,6 @@ async function loadSettingsUI() {
 
         if (!html) return false;
 
-        // 防止重复注入。
         target.find('#st_qq_notification_settings').remove();
         target.append(html);
 
@@ -349,8 +347,6 @@ async function init() {
 
     getSettings();
 
-    // 某些 ST 版本执行 activate hook 时设置面板 DOM 尚未完成，
-    // 因此先尝试一次；如果还没有目标容器，再在 APP_READY 后补一次。
     if (!(await loadSettingsUI()) && event_types.APP_READY) {
         eventSource.once(event_types.APP_READY, loadSettingsUI);
     }
