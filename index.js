@@ -102,7 +102,6 @@ async function registerNotificationWorker() {
         scope: workerScope,
     });
 
-    await navigator.serviceWorker.ready;
     updateStatus();
     return notificationRegistration;
 }
@@ -137,7 +136,9 @@ async function getNotificationRegistration() {
     if (!('serviceWorker' in navigator)) return null;
 
     try {
-        notificationRegistration = await navigator.serviceWorker.ready;
+        const swUrl = new URL('sw.js', import.meta.url);
+        const workerScope = new URL('./', swUrl).href;
+        notificationRegistration = await navigator.serviceWorker.getRegistration(workerScope);
         return notificationRegistration;
     } catch (error) {
         console.warn('[ST QQ Notification] Service Worker unavailable:', error);
