@@ -481,11 +481,53 @@ async function loadSettingsUI() {
     }
 }
 
+function buildFallbackSettingsHtml() {
+    if (document.querySelector('#stq_fallback_settings_button')) return;
+
+    const button = $(`
+        <button id="stq_fallback_settings_button" class="menu_button stq-fallback-button" type="button">
+            消息通知设置
+        </button>`);
+
+    const panel = $(`
+        <div id="stq_fallback_settings_panel" class="stq-floating-settings" hidden>
+            <div class="stq-fallback-header">
+                <b>消息通知</b>
+                <button id="stq_fallback_close" class="menu_button" type="button">关闭</button>
+            </div>
+            <div id="stq_fallback_content"></div>
+        </div>`);
+
+    panel.find('#stq_fallback_content').append($(buildSettingsHtml()));
+    $('body').append(button, panel);
+
+    button.on('click.stq', () => {
+        panel.prop('hidden', false);
+        bindSettingsControls(panel);
+        updateStatus();
+    });
+    panel.find('#stq_fallback_close').on('click.stq', () => {
+        panel.prop('hidden', true);
+    });
+    bindSettingsControls(panel);
+    updateStatus();
+}
+
+function removeFallbackSettings() {
+    $('#stq_fallback_settings_button, #stq_fallback_settings_panel').remove();
+}
+
 function scheduleSettingsMount(eventSource, eventTypes) {
     const tryMount = () => {
-        // 酒馆的扩展设置面板可能在初始化后被重新创建/重绘。
-        // 因此这里不能在第一次挂载成功后停止监听，否则设置项可能随后消失。
-        mountSettingsUI();
+        const mounted = mountSettingsUI();
+
+        // 正常的扩展设置面板存在时，不显示备用入口。
+        if (mounted) {
+            removeFallbackSettings();
+        } else {
+            // 如果酒馆尚未创建扩展设置容器，仍提供一个绝对可见的备用入口。
+            buildFallbackSettingsHtml();
+        }
     };
 
     tryMount();
@@ -500,10 +542,7 @@ function scheduleSettingsMount(eventSource, eventTypes) {
 
     if (!settingsObserver && document.body) {
         settingsObserver = new MutationObserver(() => {
-            // 避免自己 append 设置项时造成无意义的递归挂载。
-            if (!document.querySelector('#st_qq_notification_settings')) {
-                tryMount();
-            }
+            tryMount();
         });
         settingsObserver.observe(document.body, { childList: true, subtree: true });
     }
