@@ -382,41 +382,16 @@ async function showTestNotification() {
 async function loadSettingsUI() {
     if (settingsUiLoaded) return true;
 
-    const target = $('#extensions_settings2').length
-        ? $('#extensions_settings2')
-        : $('#extensions_settings').length
-            ? $('#extensions_settings')
+    const target = $('#extensions_settings').length
+        ? $('#extensions_settings')
+        : $('#extensions_settings2').length
+            ? $('#extensions_settings2')
             : null;
 
     if (!target || !target.length) return false;
 
     try {
-        let html = '';
-
-        // 直接从当前扩展目录读取 settings.html，避免模板渲染器异常时整段 UI 静默失败。
-        try {
-            const response = await fetch(new URL('settings.html', import.meta.url));
-            if (response.ok) {
-                html = await response.text();
-            }
-        } catch (error) {
-            console.warn('[ST QQ Notification] Direct settings.html load failed:', error);
-        }
-
-        // 兼容旧版酒馆/特殊安装方式。
-        if (!html) {
-            const context = SillyTavern.getContext();
-            if (context.renderExtensionTemplateAsync) {
-                html = await context.renderExtensionTemplateAsync(
-                    'third-party/st-qq-notification',
-                    'settings',
-                );
-            }
-        }
-
-        if (!html) {
-            html = await $.get('scripts/extensions/third-party/st-qq-notification/settings.html');
-        }
+        const html = await $.get('scripts/extensions/third-party/st-qq-notification/settings.html');
 
         if (!html) return false;
 
@@ -487,29 +462,24 @@ async function init() {
 
     getSettings();
 
-    // activate 发生在酒馆 UI 完整建立之前时，不要阻塞 activate。
-    // 注意：loadSettingsUI 是 async 函数，不能直接写成 if (!loadSettingsUI())，
-    // 否则拿到的是 Promise（永远为真），后续生命周期事件根本不会注册。
-    const scheduleSettingsUI = () => {
+    // 使用 ST 官方示例同样的 jQuery ready 挂载方式；生命周期事件只作为兜底。
+    jQuery(async () => {
+        if (settingsUiLoaded) return;
+        await loadSettingsUI();
+    });
+
+    const retrySettingsUI = () => {
         if (settingsUiLoaded || settingsMounting) return;
         settingsMounting = true;
-
-        loadSettingsUI()
-            .finally(() => {
-                settingsMounting = false;
-            });
+        loadSettingsUI().finally(() => {
+            settingsMounting = false;
+        });
     };
 
-    loadSettingsUI().then(loaded => {
-        if (loaded || settingsUiLoaded) return;
-
-        if (event_types.APP_INITIALIZED) {
-            eventSource.once(event_types.APP_INITIALIZED, scheduleSettingsUI);
-        }
-        if (event_types.APP_READY) {
-            eventSource.once(event_types.APP_READY, scheduleSettingsUI);
-        }
-    });
+    if (!settingsUiLoaded) {
+        if (event_types.APP_INITIALIZED) eventSource.once(event_types.APP_INITIALIZED, retrySettingsUI);
+        if (event_types.APP_READY) eventSource.once(event_types.APP_READY, retrySettingsUI);
+    }
 
     if (Notification.permission === 'granted') {
         try {
@@ -526,17 +496,4 @@ async function init() {
 
     console.log('[ST QQ Notification] Loaded.');
 }
-
-// DOM ready 后再挂载设置面板。SillyTavern 的扩展设置容器在扩展 activate 时可能尚未进入 DOM。
-jQuery(async () => {
-    if (!settingsUiLoaded && !settingsMounting) {
-        settingsMounting = true;
-        try {
-            await loadSettingsUI();
-        } finally {
-            settingsMounting = false;
-        }
-    }
-});
-
 export { init };
