@@ -391,7 +391,28 @@ async function loadSettingsUI() {
     if (!target || !target.length) return false;
 
     try {
-        const html = await $.get('scripts/extensions/third-party/st-qq-notification/settings.html');
+        let html = '';
+
+        // 直接从扩展自身目录读取，避免相对路径在不同 ST 部署路径下失效。
+        try {
+            const response = await fetch(new URL('settings.html', import.meta.url));
+            if (response.ok) {
+                html = await response.text();
+            }
+        } catch (error) {
+            console.warn('[ST QQ Notification] Direct settings load failed:', error);
+        }
+
+        // ST 官方模板渲染器作为第二路径。
+        if (!html) {
+            const context = SillyTavern.getContext();
+            if (context.renderExtensionTemplateAsync) {
+                html = await context.renderExtensionTemplateAsync(
+                    'third-party/st-qq-notification',
+                    'settings',
+                );
+            }
+        }
 
         if (!html) return false;
 
