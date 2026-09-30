@@ -527,4 +527,16 @@ async function init() {
     console.log('[ST QQ Notification] Loaded.');
 }
 
+// DOM ready 后再挂载设置面板。SillyTavern 的扩展设置容器在扩展 activate 时可能尚未进入 DOM。
+jQuery(async () => {
+    if (!settingsUiLoaded && !settingsMounting) {
+        settingsMounting = true;
+        try {
+            await loadSettingsUI();
+        } finally {
+            settingsMounting = false;
+        }
+    }
+});
+
 export { init };
