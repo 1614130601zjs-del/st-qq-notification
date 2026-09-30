@@ -46,7 +46,7 @@ async function showGenerationInterruptedNotification() {
     const title = character?.name || 'SillyTavern';
     const avatar = character?.avatar
         ? new URL(
-            '/thumbnail?type=avatar&file=' + encodeURIComponent(character.avatar) + '&width=512&height=512',
+            '/thumbnail?type=avatar&file=' + encodeURIComponent(character.avatar) + '',
             location.origin,
         ).href
         : undefined;
@@ -361,7 +361,7 @@ async function showTestNotification() {
 
     try {
         await registration.showNotification(testTitle, {
-            body: 'QQ式回复通知测试：系统通知、常驻和震动功能已发送。',
+            body: '消息通知测试：系统通知、常驻和震动功能已发送。',
             icon: testAvatar,
             badge: testAvatar,
             image: testAvatar,
@@ -382,10 +382,10 @@ async function showTestNotification() {
 async function loadSettingsUI() {
     if (settingsUiLoaded) return true;
 
-    const target = $('#extensions_settings').length
-        ? $('#extensions_settings')
-        : $('#extensions_settings2').length
-            ? $('#extensions_settings2')
+    const target = $('#extensions_settings2').length
+        ? $('#extensions_settings2')
+        : $('#extensions_settings').length
+            ? $('#extensions_settings')
             : null;
 
     if (!target || !target.length) return false;
@@ -483,12 +483,7 @@ async function init() {
 
     getSettings();
 
-    // 使用 ST 官方示例同样的 jQuery ready 挂载方式；生命周期事件只作为兜底。
-    jQuery(async () => {
-        if (settingsUiLoaded) return;
-        await loadSettingsUI();
-    });
-
+    // 设置面板由 ST 动态创建，使用 DOM 观察确保启动后一定能挂载。
     const retrySettingsUI = () => {
         if (settingsUiLoaded || settingsMounting) return;
         settingsMounting = true;
@@ -496,6 +491,21 @@ async function init() {
             settingsMounting = false;
         });
     };
+
+    jQuery(() => {
+        retrySettingsUI();
+
+        if (!settingsUiLoaded && !settingsObserver) {
+            settingsObserver = new MutationObserver(() => {
+                retrySettingsUI();
+                if (settingsUiLoaded) {
+                    settingsObserver.disconnect();
+                    settingsObserver = null;
+                }
+            });
+            settingsObserver.observe(document.body, { childList: true, subtree: true });
+        }
+    });
 
     if (!settingsUiLoaded) {
         if (event_types.APP_INITIALIZED) eventSource.once(event_types.APP_INITIALIZED, retrySettingsUI);
