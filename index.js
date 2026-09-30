@@ -454,7 +454,7 @@ async function init() {
 
     getSettings();
 
-    // 设置面板由 ST 动态创建，使用 DOM 观察确保启动后一定能挂载。
+    // 设置面板不是扩展加载时就一定存在。持续监听 DOM，直到 ST 真正创建设置容器。
     const retrySettingsUI = () => {
         if (settingsUiLoaded || settingsMounting) return;
         settingsMounting = true;
@@ -463,10 +463,10 @@ async function init() {
         });
     };
 
-    jQuery(() => {
+    const startSettingsWatcher = () => {
         retrySettingsUI();
 
-        if (!settingsUiLoaded && !settingsObserver) {
+        if (!settingsUiLoaded && !settingsObserver && document.body) {
             settingsObserver = new MutationObserver(() => {
                 retrySettingsUI();
                 if (settingsUiLoaded) {
@@ -474,14 +474,26 @@ async function init() {
                     settingsObserver = null;
                 }
             });
-            settingsObserver.observe(document.body, { childList: true, subtree: true });
+            settingsObserver.observe(document.body, {
+                childList: true,
+                subtree: true,
+            });
         }
-    });
 
-    if (!settingsUiLoaded) {
-        if (event_types.APP_INITIALIZED) eventSource.once(event_types.APP_INITIALIZED, retrySettingsUI);
-        if (event_types.APP_READY) eventSource.once(event_types.APP_READY, retrySettingsUI);
+        // 某些移动端版本不是通过一次 DOM mutation 创建设置容器，再补几次主动检查。
+        for (const delay of [100, 300, 800, 1500, 2500, 4000, 6000, 10000]) {
+            setTimeout(retrySettingsUI, delay);
+        }
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', startSettingsWatcher, { once: true });
+    } else {
+        startSettingsWatcher();
     }
+
+    if (event_types.APP_INITIALIZED) eventSource.on(event_types.APP_INITIALIZED, retrySettingsUI);
+    if (event_types.APP_READY) eventSource.on(event_types.APP_READY, retrySettingsUI);
 
     if (Notification.permission === 'granted') {
         try {
