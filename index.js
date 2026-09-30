@@ -491,6 +491,21 @@ async function init() {
 
     if (!eventsBound) {
         eventSource.on(event_types.MESSAGE_RECEIVED, showNotification);
+
+        // 生成生命周期事件：成功回复由 MESSAGE_RECEIVED 通知，
+        // 生成结束/停止则由这里兜底判断，避免“输出完成但没有通知”。
+        if (event_types.GENERATION_STARTED) {
+            eventSource.on(event_types.GENERATION_STARTED, handleGenerationStarted);
+        }
+
+        if (event_types.GENERATION_ENDED) {
+            eventSource.on(event_types.GENERATION_ENDED, handleGenerationFinished);
+        }
+
+        if (event_types.GENERATION_STOPPED) {
+            eventSource.on(event_types.GENERATION_STOPPED, handleGenerationFinished);
+        }
+
         eventsBound = true;
     }
 
