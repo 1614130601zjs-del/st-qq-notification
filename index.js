@@ -44,18 +44,10 @@ async function showGenerationInterruptedNotification() {
     const context = SillyTavern.getContext();
     const character = context.characters?.[context.characterId];
     const title = character?.name || 'SillyTavern';
-    const avatar = character?.avatar
-        ? new URL(
-            '/thumbnail?type=avatar&file=' + encodeURIComponent(character.avatar) + '',
-            location.origin,
-        ).href
-        : undefined;
 
     try {
         await registration.showNotification(title, {
             body: '输出中断或生成失败，请回到酒馆手动重新 Roll。',
-            icon: avatar,
-            badge: avatar,
             tag: EXT_KEY + '-' + (context.characterId ?? 'chat') + '-error',
             requireInteraction: true,
             renotify: true,
@@ -170,20 +162,6 @@ function getPreview(text, maxLength) {
     if (!clean) return '';
     return clean.length > maxLength ? clean.slice(0, maxLength) + '…' : clean;
 }
-function getCharacterAvatar(context, message) {
-    if (message.force_avatar) {
-        return new URL(message.force_avatar, location.origin).href;
-    }
-
-    const character = context.characters?.[context.characterId];
-    if (!character?.avatar) return undefined;
-
-    return new URL(
-        `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`,
-        location.origin,
-    ).href;
-}
-
 function updateStatus(message, type = '') {
     const el = $('#stq_status');
     if (!el.length) return;
@@ -302,13 +280,10 @@ async function showNotification(messageId) {
     const title = message.name || context.characters?.[context.characterId]?.name || 'SillyTavern';
     const body = getPreview(message.mes, settings.previewLength);
     const tag = `${EXT_KEY}-${context.characterId ?? 'chat'}`;
-    const avatar = getCharacterAvatar(context, message);
 
     try {
         await registration.showNotification(title, {
             body,
-            icon: avatar,
-            badge: avatar,
             tag,
             requireInteraction: true,
             renotify: true,
@@ -349,19 +324,11 @@ async function showTestNotification() {
     const settings = getSettings();
     const context = SillyTavern.getContext();
     const character = context.characters?.[context.characterId];
-    const testAvatar = character?.avatar
-        ? new URL(
-            `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`,
-            location.origin,
-        ).href
-        : undefined;
     const testTitle = character?.name || 'SillyTavern';
 
     try {
         await registration.showNotification(testTitle, {
             body: '消息通知测试：系统通知、常驻和震动功能已发送。',
-            icon: testAvatar,
-            badge: testAvatar,
             tag: `${EXT_KEY}-test`,
             requireInteraction: true,
             renotify: true,
