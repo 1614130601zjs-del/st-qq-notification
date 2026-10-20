@@ -136,36 +136,36 @@ function getPreview(text, maxLength) {
     // 思维链不是通知正文。先移除常见的 reasoning / thinking / analysis 块。
     // 这样即使模型没有输出 <content>，通知也不会把思维链当成正文。
     const reasoningPatterns = [
-        /<think(?:ing)?(?:\\s[^>]*)?>[\\s\\S]*?<\\/think(?:ing)?>/gi,
-        /<analysis(?:\\s[^>]*)?>[\\s\\S]*?<\\/analysis>/gi,
-        /<reasoning(?:\\s[^>]*)?>[\\s\\S]*?<\\/reasoning>/gi,
-        /<thought(?:s)?(?:\\s[^>]*)?>[\\s\\S]*?<\\/thought(?:s)?>/gi,
+        /<think(?:ing)?(?:\s[^>]*)?>[\s\S]*?<\/think(?:ing)?>/gi,
+        /<analysis(?:\s[^>]*)?>[\s\S]*?<\/analysis>/gi,
+        /<reasoning(?:\s[^>]*)?>[\s\S]*?<\/reasoning>/gi,
+        /<thought(?:s)?(?:\s[^>]*)?>[\s\S]*?<\/thought(?:s)?>/gi,
     ];
     for (const pattern of reasoningPatterns) {
         source = source.replace(pattern, '');
     }
 
     // 优先取 <content>，避免把文首状态栏或其他包裹内容当成正文。
-    const contentMatch = source.match(/<content(?:\\s[^>]*)?>([\\s\\S]*?)<\\/content>/i);
+    const contentMatch = source.match(/<content(?:\s[^>]*)?>([\s\S]*?)<\/content>/i);
     if (contentMatch) {
         source = contentMatch[1];
     } else {
         // 去掉常见的 HTML/Markdown 状态栏容器。
         source = source
-            .replace(/<script[\\s\\S]*?<\\/script>/gi, '')
-            .replace(/<style[\\s\\S]*?<\\/style>/gi, '')
+            .replace(/<script[\s\S]*?<\/script>/gi, '')
+            .replace(/<style[\s\S]*?<\/style>/gi, '')
             .replace(/<[^>]*>/g, '');
 
         // 去掉常见的状态栏包裹标记；正文不受影响。
         source = source
-            .replace(/^\\s*(?:\\[?(?:status|state|状态栏|状态)\\]?\\s*[:：]?)[\\s\\S]*?(?:\\n{2,}|\\r\\n{2,})/i, '')
-            .replace(/^\\s*[-=~_*]{3,}\\s*$/gm, '');
+            .replace(/^\s*(?:\[?(?:status|state|状态栏|状态)\]?\s*[:：]?)[\s\S]*?(?:\n{2,}|\r\n{2,})/i, '')
+            .replace(/^\s*[-=~_*]{3,}\s*$/gm, '');
     }
 
     const clean = source
         .replace(/&nbsp;/gi, ' ')
         .replace(/&amp;/gi, '&')
-        .replace(/\\s+/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
 
     if (!clean) return '';
@@ -180,7 +180,7 @@ function getCharacterAvatar(context, message) {
     if (!character?.avatar) return undefined;
 
     return new URL(
-        `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}&width=512&height=512`,
+        `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`,
         location.origin,
     ).href;
 }
@@ -353,7 +353,7 @@ async function showTestNotification() {
     const character = context.characters?.[context.characterId];
     const testAvatar = character?.avatar
         ? new URL(
-            `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}&width=512&height=512`,
+            `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`,
             location.origin,
         ).href
         : undefined;
